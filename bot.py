@@ -1,22 +1,27 @@
-# Telegram Math Bot by Cytra
+# bot.py - Cytra's Telegram Math Bot (Render-ready)
 
 import json
 import random
 import time
+import os
+import nest_asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 # ====== CONFIG ======
-import os
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.getenv("TOKEN")  # Set this in Render environment variables
+DATA_FILE = "users.json"
+LOCK_DURATION = 24 * 60 * 60  # 24 hours
+
+# ====== APPLY NEST_ASYNCIO ======
+nest_asyncio.apply()
 
 # ====== STORAGE ======
-
 def load_data():
     try:
         with open(DATA_FILE, "r") as f:
             return json.load(f)
-    except:
+    except FileNotFoundError:
         return {}
 
 def save_data(data):
@@ -24,7 +29,6 @@ def save_data(data):
         json.dump(data, f)
 
 # ====== MATH ======
-
 def generate_question():
     a = random.randint(1, 20)
     b = random.randint(1, 20)
@@ -44,7 +48,7 @@ def generate_question():
 
     return f"{a} {op} {b} = ?", correct, options
 
-# ====== BOT ======
+# ====== BOT HANDLERS ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello! I am Cytra's Math Bot. Send a message to continue.")
 
@@ -52,7 +56,6 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     user_id = str(update.message.from_user.id)
 
-    # Check lock
     if user_id in data:
         locked_until = data[user_id].get("locked_until", 0)
         if time.time() < locked_until:
@@ -60,13 +63,12 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Wrong answer before. Wait {remaining}h until next try.")
             return
 
-    # Generate q
     q, correct, options = generate_question()
     data[user_id] = {"correct": correct, "locked_until": 0, "verified": False}
     save_data(data)
 
-    btns = [[InlineKeyboardButton(str(o), callback_data=str(o))] for o in options]
-    markup = InlineKeyboardMarkup(btns)
+    buttons = [[InlineKeyboardButton(str(o), callback_data=str(o))] for o in options]
+    markup = InlineKeyboardMarkup(buttons)
 
     await update.message.reply_text(q, reply_markup=markup)
 
@@ -96,7 +98,6 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     user_id = str(update.message.from_user.id)
 
-    # Check verification
     if user_id in data and data[user_id].get("verified", False):
         await update.message.reply_text(update.message.text)
     else:
@@ -115,4 +116,13 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    asyncio.get_event_loop().run_until_complete(main())
+
+# ====== requirements.txt ======
+# python-telegram-bot==20.4
+# nest_asyncio==1.5.6
+
+# ====== start.sh ======
+# chmod +x start.sh
+# ./start.sh content:
+# python3 bot.py
